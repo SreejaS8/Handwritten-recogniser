@@ -1,268 +1,189 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
-import Papa from 'papaparse';
-import * as tf from '@tensorflow/tfjs';
+import logoSvg from './assets/hdr.svg';
 
-function ModelDisplay() {
-  const [weights, setWeights] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [prediction, setPrediction] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasPredicted, setHasPredicted] = useState(false);
-
+const ModelDisplay = () => {
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
+  const [result, setResult] = useState('');
+  const [isMouseDown, setIsMouseDown] = useState(false);
 
   useEffect(() => {
-    async function loadModelFromCSV() {
-      try {
-        const response = await fetch('/your_model.csv');
-        const csvText = await response.text();
-        
-        Papa.parse(csvText, {
-          complete: (results) => {
-            console.log("CSV loaded successfully");
-            setWeights(results.data);
-            setLoading(false);
-          },
-          header: true
-        });
-      } catch (err) {
-        console.error('Failed to load model weights:', err);
-        setError('Failed to load model weights');
-        setLoading(false);
-      }
-    }
-
-    loadModelFromCSV();
-  }, []);
-
-  useEffect(() => {
-    if (canvasRef.current) {
+    if (isDrawingMode && canvasRef.current) {
       const canvas = canvasRef.current;
-      canvas.width = 280 * 2;
-      canvas.height = 280 * 2;
+      canvas.width = 280;
+      canvas.height = 280;
       canvas.style.width = '280px';
       canvas.style.height = '280px';
 
       const context = canvas.getContext('2d');
-      context.scale(2, 2);
       context.lineCap = 'round';
-      context.strokeStyle = 'white';
+      context.strokeStyle = 'black';
       context.lineWidth = 15;
+
+      // Fill with beige background
+      context.fillStyle = '#e9d5b9';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
       contextRef.current = context;
-
-      context.fillStyle = 'black';
-      context.fillRect(0, 0, canvas.width / 2, canvas.height / 2);
     }
-  }, []);
+  }, [isDrawingMode]);
 
-  const startDrawing = (e) => {
-    if (!contextRef.current) return;
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    let x, y;
-    if (e.touches) {
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
-    } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
-    }
+  const startDrawing = ({ nativeEvent }) => {
+    if (!isDrawingMode) return;
+    setIsMouseDown(true);
+    const { offsetX, offsetY } = nativeEvent;
     contextRef.current.beginPath();
-    contextRef.current.moveTo(x, y);
-    setIsDrawing(true);
-    setHasPredicted(false);
-    setPrediction(null);
+    contextRef.current.moveTo(offsetX, offsetY);
+    setHasDrawn(true);
   };
 
-  const finishDrawing = () => {
-    if (!contextRef.current) return;
-    contextRef.current.closePath();
-    setIsDrawing(false);
-  };
-
-  const draw = (e) => {
-    if (!isDrawing || !contextRef.current || !canvasRef.current) return;
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    let x, y;
-    if (e.touches) {
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
-    } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
-    }
-    contextRef.current.lineTo(x, y);
+  const draw = ({ nativeEvent }) => {
+    if (!isDrawingMode || !isMouseDown) return;
+    const { offsetX, offsetY } = nativeEvent;
+    contextRef.current.lineTo(offsetX, offsetY);
     contextRef.current.stroke();
   };
 
-  const clearCanvas = () => {
-    if (!contextRef.current || !canvasRef.current) return;
+  const finishDrawing = () => {
+    setIsMouseDown(false);
+    contextRef.current.closePath();
+  };
+
+  const handleTouchStart = (e) => {
+    const touch = e.touches[0];
     const canvas = canvasRef.current;
-    contextRef.current.fillStyle = 'black';
-    contextRef.current.fillRect(0, 0, canvas.width / 2, canvas.height / 2);
-    setPrediction(null);
-    setHasPredicted(false);
+    const rect = canvas.getBoundingClientRect();
+    const offsetX = touch.clientX - rect.left;
+    const offsetY = touch.clientY - rect.top;
+
+    setIsMouseDown(true);
+    contextRef.current.beginPath();
+    contextRef.current.moveTo(offsetX, offsetY);
+    setHasDrawn(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isMouseDown) return;
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const offsetX = touch.clientX - rect.left;
+    const offsetY = touch.clientY - rect.top;
+
+    contextRef.current.lineTo(offsetX, offsetY);
+    contextRef.current.stroke();
+  };
+
+  const handleTouchEnd = () => {
+    setIsMouseDown(false);
+    contextRef.current.closePath();
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Refill beige background
+    context.fillStyle = '#e9d5b9';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    setHasDrawn(false);
+    setResult('');
   };
 
   const predictDigit = () => {
-    if (hasPredicted) return;
-    
-    const canvasData = getCanvasData();
-    if (!canvasData) {
-      setPrediction({ digit: 'Error', confidence: 'N/A' });
-      setHasPredicted(true);
-      return;
-    }
-    
-    // Check if the canvas is blank
-    if (!hasMeaningfulData(canvasData.data)) {
-      setPrediction({ digit: 'Blank', confidence: 'N/A' });
-      setHasPredicted(true);
-      return;
-    }
-    
-    // Use weights to make prediction
-    if (weights) {
-      try {
-        // Process the canvas data
-        const processedData = preprocessCanvasData(canvasData);
-        
-        // Perform prediction using your CSV weights
-        // This is a simplified example - you'll need to implement the actual
-        // neural network forward pass logic based on your model architecture
-        const result = predictWithCSVModel(processedData);
-        
-        setPrediction({
-          digit: result.digit,
-          confidence: `${result.confidence}%`
-        });
-      } catch (err) {
-        console.error('Prediction error:', err);
-        setPrediction({ digit: 'Error', confidence: 'N/A' });
-      }
-    } else {
-      setPrediction({ digit: 'Model not loaded', confidence: 'N/A' });
-    }
-    
-    setHasPredicted(true);
-  };
-
-  const getCanvasData = () => {
-    if (!canvasRef.current) return null;
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    return ctx.getImageData(0, 0, canvas.width / 2, canvas.height / 2);
-  };
-
-  const hasMeaningfulData = (data) => {
-    let nonBlackPixels = 0;
-    const threshold = 100;
-    
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] > 20 || data[i + 1] > 20 || data[i + 2] > 20) {
-        nonBlackPixels++;
-        if (nonBlackPixels > threshold) {
-          return true;
-        }
-      }
+    const context = canvas.getContext('2d');
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  
+    const isEmpty = !hasDrawn || imageData.data.every(pixel => pixel === 0);
+    if (isEmpty) {
+      alert('Nothing on canvas');
+      return;
     }
-    return false;
+  
+    const dataURL = canvas.toDataURL('image/png');
+    console.log('Sending image:', dataURL);
+  
+    // TODO: Send this to your FastAPI backend
+    const prediction = Math.floor(Math.random() * 10); // Replace this with real API call
+    setResult(`${prediction} it is!!🌟`);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    setHasDrawn(false);
   };
 
-  const preprocessCanvasData = (imageData) => {
-    // Resize to 28x28 (typical for MNIST models)
-    const targetSize = 28;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = targetSize;
-    tempCanvas.height = targetSize;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    // Draw the original image to the temp canvas, resizing it
-    tempCtx.drawImage(
-      canvasRef.current, 
-      0, 0, canvasRef.current.width / 2, canvasRef.current.height / 2,
-      0, 0, targetSize, targetSize
-    );
-    
-    // Get the resized image data
-    const resizedImageData = tempCtx.getImageData(0, 0, targetSize, targetSize);
-    
-    // Convert to grayscale and normalize (0-1)
-    const grayscaleData = new Float32Array(targetSize * targetSize);
-    for (let i = 0; i < resizedImageData.data.length; i += 4) {
-      const value = resizedImageData.data[i] / 255.0;
-      grayscaleData[i/4] = value;
-    }
-    
-    return grayscaleData;
+  const handleBack = () => {
+    setIsDrawingMode(false);
+    setHasDrawn(false);
+    setResult('');
   };
 
-  // This function would contain your model's forward pass logic
-  // This is HIGHLY dependent on your model architecture and CSV structure
-  const predictWithCSVModel = (pixelData) => {
-    // This is a placeholder - you need to implement the actual neural network
-    // forward pass using your weights from the CSV
-    console.log("Making prediction with CSV weights");
-    
-    // Example logic (will not work without proper implementation):
-    // 1. Flatten the input
-    // 2. Apply weights and biases from your CSV for each layer
-    // 3. Apply activation functions
-    // 4. Calculate final output
-
-    // For now, return a simulated result
-    const randomDigit = Math.floor(Math.random() * 10);
-    return {
-      digit: randomDigit,
-      confidence: 95
-    };
+  const handleStartDrawing = () => {
+    setIsDrawingMode(true);
   };
 
   return (
-    <div className="container">
-      <div className="canvas-container">
-        <canvas
-          ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseUp={finishDrawing}
-          onMouseMove={draw}
-          onMouseLeave={finishDrawing}
-          onTouchStart={startDrawing}
-          onTouchEnd={finishDrawing}
-          onTouchMove={draw}
-          className="drawing-canvas"
-        />
+    <div className="hdr-container">
+      <div className="hdr-logo">
+        <img src={logoSvg} alt="HDR Logo" />
       </div>
-      <div className="buttons">
-        <button
-          onClick={predictDigit}
-          disabled={hasPredicted}
-          className={hasPredicted ? 'button-predicted' : ''}
-        >
-          {hasPredicted ? 'Predicted ✓' : 'Predict'}
-        </button>
-        <button onClick={clearCanvas}>Clear Canvas</button>
+
+      <div className="hdr-frame">
+        {!isDrawingMode ? (
+          <div className="start-button" onClick={handleStartDrawing}>
+            Start Drawing your digit!
+          </div>
+        ) : (
+          <div className="drawing-area">
+            {result && (
+              <div className="prediction-result">{result}</div>
+            )}
+
+            <div className="canvas-frame">
+              <canvas
+                ref={canvasRef}
+                className="drawing-canvas"
+                onMouseDown={startDrawing}
+                onMouseUp={finishDrawing}
+                onMouseMove={draw}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              />
+            </div>
+
+            <div className="action-buttons">
+              <button onClick={predictDigit} className="action-button">
+                Predict
+              </button>
+              <button onClick={handleBack} className="action-button">
+                Back
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-      
-      {loading ? (
-        <p className="loading">Loading data...</p>
-      ) : error ? (
-        <p className="error">Error: {error}</p>
-      ) : (
-        <p className="prediction">
-          {prediction !== null ? 
-            `Prediction: ${prediction.digit} (Confidence: ${prediction.confidence})` : 
-            "Draw a digit (0-9)"}
-        </p>
-      )}
+
+      <div className="hdr-title">
+        The <br /> HDR
+      </div>
+      <div className="credit">
+        Made by Sreeja
+        <a href="https://github.com/SreejaS8" target="_blank" rel="noopener noreferrer" className="github-link">
+          <img
+            src="https://github.com/SreejaS8.png"
+            alt="Sreeja's GitHub profile"
+            className="github-avatar"
+          />
+        </a>
+      </div>
     </div>
   );
-}
+};
 
 export default ModelDisplay;
