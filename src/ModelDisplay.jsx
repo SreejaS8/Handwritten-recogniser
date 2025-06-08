@@ -1,189 +1,277 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // Added useCallback
 import './App.css';
 import logoSvg from './assets/hdr.svg';
+import * as tf from '@tensorflow/tfjs';
 
 const ModelDisplay = () => {
-  const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
-  const canvasRef = useRef(null);
-  const contextRef = useRef(null);
-  const [result, setResult] = useState('');
-  const [isMouseDown, setIsMouseDown] = useState(false);
+    const [isDrawingMode, setIsDrawingMode] = useState(false); // Start NOT in drawing mode
+    const [hasDrawn, setHasDrawn] = useState(false);
+    const canvasRef = useRef(null);
+    const contextRef = useRef(null);
+    const [result, setResult] = useState("");
+    const [isMouseDown, setIsMouseDown] = useState(false);
+    const [model, setModel] = useState(null);
+    const [isModelLoading, setIsModelLoading] = useState(true); // Start as true
 
-  useEffect(() => {
-    if (isDrawingMode && canvasRef.current) {
-      const canvas = canvasRef.current;
-      canvas.width = 280;
-      canvas.height = 280;
-      canvas.style.width = '280px';
-      canvas.style.height = '280px';
+    const CLASS_NAMES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-      const context = canvas.getContext('2d');
-      context.lineCap = 'round';
-      context.strokeStyle = 'black';
-      context.lineWidth = 15;
+    // Load the TensorFlow.js model
+    useEffect(() => {
+        const loadModel = async () => {
+            try {
+                const loadedModel = await tf.loadLayersModel('model/model.json'); // Correct path
+                setModel(loadedModel);
+                console.log('✅ Model loaded successfully');
+            } catch (error) {
+                console.error('❌ Error loading model:', error);
+                // You might want to display an error message to the user here
+            } finally {
+                setIsModelLoading(false);
+            }
+        };
+        loadModel();
+    }, []);
 
-      // Fill with beige background
-      context.fillStyle = '#e9d5b9';
-      context.fillRect(0, 0, canvas.width, canvas.height);
+    // Memoize the clearCanvas function
+    const clearCanvas = useCallback(() => {
+        const canvas = canvasRef.current;
+        if (canvas) { // ONLY proceed if canvasRef.current is not null
+            const context = canvas.getContext('2d');
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.fillStyle = '#e9d5b9';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        setHasDrawn(false);
+        setResult('');
+    }, []); // No dependencies needed for clearCanvas itself
 
-      contextRef.current = context;
-    }
-  }, [isDrawingMode]);
+    // Initialize the canvas and context when it's in drawing mode and canvas is mounted
+    useEffect(() => {
+        if (isDrawingMode && canvasRef.current) {
+            const canvas = canvasRef.current;
+            canvas.width = 280;
+            canvas.height = 280;
+            canvas.style.width = '280px';
+            canvas.style.height = '280px';
 
-  const startDrawing = ({ nativeEvent }) => {
-    if (!isDrawingMode) return;
-    setIsMouseDown(true);
-    const { offsetX, offsetY } = nativeEvent;
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(offsetX, offsetY);
-    setHasDrawn(true);
-  };
+            const context = canvas.getContext('2d');
+            context.lineCap = 'round';
+            context.strokeStyle = 'black';
+            context.lineWidth = 15;
 
-  const draw = ({ nativeEvent }) => {
-    if (!isDrawingMode || !isMouseDown) return;
-    const { offsetX, offsetY } = nativeEvent;
-    contextRef.current.lineTo(offsetX, offsetY);
-    contextRef.current.stroke();
-  };
+            // Fill with beige background initially
+            context.fillStyle = '#e9d5b9';
+            context.fillRect(0, 0, canvas.width, canvas.height);
 
-  const finishDrawing = () => {
-    setIsMouseDown(false);
-    contextRef.current.closePath();
-  };
+            contextRef.current = context;
+        } else if (!isDrawingMode) {
+            // When leaving drawing mode, ensure contextRef is nullified
+            // to prevent issues if component tries to use it while canvas is unmounted
+            contextRef.current = null;
+        }
+    }, [isDrawingMode]); // Re-run when isDrawingMode changes
 
-  const handleTouchStart = (e) => {
-    const touch = e.touches[0];
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const offsetX = touch.clientX - rect.left;
-    const offsetY = touch.clientY - rect.top;
+    // Drawing handlers
+    const startDrawing = ({ nativeEvent }) => {
+        if (!isDrawingMode || isModelLoading || !contextRef.current) return; // Check contextRef
+        setIsMouseDown(true);
+        const { offsetX, offsetY } = nativeEvent;
+        contextRef.current.beginPath();
+        contextRef.current.moveTo(offsetX, offsetY);
+        setHasDrawn(true);
+    };
 
-    setIsMouseDown(true);
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(offsetX, offsetY);
-    setHasDrawn(true);
-  };
+    const draw = ({ nativeEvent }) => {
+        if (!isDrawingMode || !isMouseDown || isModelLoading || !contextRef.current) return; // Check contextRef
+        const { offsetX, offsetY } = nativeEvent;
+        contextRef.current.lineTo(offsetX, offsetY);
+        contextRef.current.stroke();
+    };
 
-  const handleTouchMove = (e) => {
-    if (!isMouseDown) return;
-    const touch = e.touches[0];
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const offsetX = touch.clientX - rect.left;
-    const offsetY = touch.clientY - rect.top;
+    const finishDrawing = () => {
+        if (!contextRef.current) return; // Check contextRef
+        setIsMouseDown(false);
+        contextRef.current.closePath();
+    };
 
-    contextRef.current.lineTo(offsetX, offsetY);
-    contextRef.current.stroke();
-  };
+    const handleTouchStart = (e) => {
+        if (!isDrawingMode || isModelLoading || !contextRef.current) return; // Check contextRef
+        e.preventDefault();
+        const touch = e.touches[0];
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const offsetX = touch.clientX - rect.left;
+        const offsetY = touch.clientY - rect.top;
 
-  const handleTouchEnd = () => {
-    setIsMouseDown(false);
-    contextRef.current.closePath();
-  };
+        setIsMouseDown(true);
+        contextRef.current.beginPath();
+        contextRef.current.moveTo(offsetX, offsetY);
+        setHasDrawn(true);
+    };
 
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    const handleTouchMove = (e) => {
+        if (!isDrawingMode || !isMouseDown || isModelLoading || !contextRef.current) return; // Check contextRef
+        e.preventDefault();
+        const touch = e.touches[0];
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const offsetX = touch.clientX - rect.left;
+        const offsetY = touch.clientY - rect.top;
 
-    // Refill beige background
-    context.fillStyle = '#e9d5b9';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+        contextRef.current.lineTo(offsetX, offsetY);
+        contextRef.current.stroke();
+    };
 
-    setHasDrawn(false);
-    setResult('');
-  };
+    const handleTouchEnd = () => {
+        if (!contextRef.current) return; // Check contextRef
+        setIsMouseDown(false);
+        contextRef.current.closePath();
+    };
 
-  const predictDigit = () => {
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  
-    const isEmpty = !hasDrawn || imageData.data.every(pixel => pixel === 0);
-    if (isEmpty) {
-      alert('Nothing on canvas');
-      return;
-    }
-  
-    const dataURL = canvas.toDataURL('image/png');
-    console.log('Sending image:', dataURL);
-  
-    // TODO: Send this to your FastAPI backend
-    const prediction = Math.floor(Math.random() * 10); // Replace this with real API call
-    setResult(`${prediction} it is!!🌟`);
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    const preprocessCanvasForModel = (canvas) => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 28;
+        tempCanvas.height = 28;
+        const tempCtx = tempCanvas.getContext('2d');
 
-    setHasDrawn(false);
-  };
+        tempCtx.drawImage(canvas, 0, 0, 28, 28);
+        const imageData = tempCtx.getImageData(0, 0, 28, 28);
 
-  const handleBack = () => {
-    setIsDrawingMode(false);
-    setHasDrawn(false);
-    setResult('');
-  };
+        const data = imageData.data;
+        const grayscalePixels = new Float32Array(28 * 28);
 
-  const handleStartDrawing = () => {
-    setIsDrawingMode(true);
-  };
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
 
-  return (
-    <div className="hdr-container">
-      <div className="hdr-logo">
-        <img src={logoSvg} alt="HDR Logo" />
-      </div>
+            const brightness = (r + g + b) / 3;
+            const invertedBrightness = 255 - brightness;
+            grayscalePixels[i / 4] = invertedBrightness / 255.0;
+        }
 
-      <div className="hdr-frame">
-        {!isDrawingMode ? (
-          <div className="start-button" onClick={handleStartDrawing}>
-            Start Drawing your digit!
-          </div>
-        ) : (
-          <div className="drawing-area">
-            {result && (
-              <div className="prediction-result">{result}</div>
-            )}
+        const inputTensor = tf.tensor4d(Array.from(grayscalePixels), [1, 28, 28, 1]);
+        return inputTensor;
+    };
 
-            <div className="canvas-frame">
-              <canvas
-                ref={canvasRef}
-                className="drawing-canvas"
-                onMouseDown={startDrawing}
-                onMouseUp={finishDrawing}
-                onMouseMove={draw}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              />
+    const predictDigit = async () => {
+        if (!model) {
+            alert('Model is not loaded yet. Please wait.');
+            return;
+        }
+
+        const canvas = canvasRef.current;
+        if (!canvas) { // Additional check for canvas existence
+            alert('Canvas is not ready. Please try again.');
+            return;
+        }
+
+        if (!hasDrawn) {
+            alert('Please draw a digit first.');
+            return;
+        }
+
+        try {
+            const input = preprocessCanvasForModel(canvas);
+            console.log("Input tensor shape for prediction:", input.shape);
+
+            const prediction = model.predict(input);
+            const probabilities = await prediction.data();
+            const predictedDigitIndex = probabilities.indexOf(Math.max(...probabilities));
+            const predictedDigit = CLASS_NAMES[predictedDigitIndex];
+            const confidence = Math.max(...probabilities) * 100;
+
+            input.dispose();
+            prediction.dispose();
+
+            console.log('Raw Probabilities:', probabilities);
+            setResult(`${predictedDigit} with ${confidence.toFixed(2)}% confidence! 🌟`);
+            // clearCanvas(); // Optionally clear after prediction, if desired
+        } catch (error) {
+            console.error('Error during prediction:', error);
+            alert('Error occurred during prediction. Please try again. Check console for details.');
+        }
+    };
+
+    const handleBack = () => {
+        setIsDrawingMode(false);
+        setHasDrawn(false);
+        setResult('');
+        // clearCanvas will be called by useEffect if isDrawingMode becomes true again
+        // Or it can be called explicitly if you want to ensure it clears,
+        // but only if canvasRef.current is not null at that moment.
+    };
+
+    const handleStartDrawing = () => {
+        setIsDrawingMode(true);
+        // clearCanvas() is called in the useEffect when isDrawingMode becomes true
+        // and canvasRef.current is valid.
+    };
+
+    return (
+        <div className="hdr-container">
+            <div className="hdr-logo">
+                <img src={logoSvg} alt="HDR Logo" />
             </div>
 
-            <div className="action-buttons">
-              <button onClick={predictDigit} className="action-button">
-                Predict
-              </button>
-              <button onClick={handleBack} className="action-button">
-                Back
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+            <div className="hdr-frame">
+                {!isDrawingMode ? (
+                    <div className="start-button" onClick={handleStartDrawing}>
+                        {isModelLoading ? 'Loading model...' : 'Start Drawing your digit!'}
+                    </div>
+                ) : (
+                    <div className="drawing-area">
+                        {result && (
+                            <div className="prediction-result">{result}</div>
+                        )}
 
-      <div className="hdr-title">
-        The <br /> HDR
-      </div>
-      <div className="credit">
-        Made by Sreeja
-        <a href="https://github.com/SreejaS8" target="_blank" rel="noopener noreferrer" className="github-link">
-          <img
-            src="https://github.com/SreejaS8.png"
-            alt="Sreeja's GitHub profile"
-            className="github-avatar"
-          />
-        </a>
-      </div>
-    </div>
-  );
+                        {/* Only render canvas if in drawing mode */}
+                        <div className="canvas-frame">
+                            {/* Conditional rendering of canvas to ensure it exists when needed */}
+                            {isDrawingMode && (
+                                <canvas
+                                    ref={canvasRef}
+                                    className="drawing-canvas"
+                                    onMouseDown={startDrawing}
+                                    onMouseUp={finishDrawing}
+                                    onMouseMove={draw}
+                                    onTouchStart={handleTouchStart}
+                                    onTouchMove={handleTouchMove}
+                                    onTouchEnd={handleTouchEnd}
+                                />
+                            )}
+                        </div>
+
+                        <div className="action-buttons">
+                            <button onClick={predictDigit} className="action-button" disabled={isModelLoading || !hasDrawn || !model}>
+                                Predict
+                            </button>
+                            <button onClick={clearCanvas} className="action-button" disabled={isModelLoading}>
+                                Clear
+                            </button>
+                            <button onClick={handleBack} className="action-button">
+                                Back
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="hdr-title">
+                The <br /> HDR
+            </div>
+            <div className="credit">
+                Made by Sreeja
+                <a href="https://github.com/SreejaS8" target="_blank" rel="noopener noreferrer" className="github-link">
+                    <img
+                        src="https://github.com/SreejaS8.png"
+                        alt="Sreeja's GitHub profile"
+                        className="github-avatar"
+                    />
+                </a>
+            </div>
+        </div>
+    );
 };
 
 export default ModelDisplay;
