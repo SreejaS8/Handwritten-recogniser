@@ -1,6 +1,0 @@
-tensorflow==2.13.0
-tensorflowjs==4.21.0
-numpy==1.24.3
-packaging==23.1
-tensorflow-decision-forests>=1.5.0
-tensorflow-hub>=0.16.1

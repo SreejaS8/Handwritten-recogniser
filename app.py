@@ -1,33 +1,51 @@
-# app.py (FastAPI)
-from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from tensorflow.keras.models import load_model
 import numpy as np
-import pandas as pd
-from PIL import Image
-import io
+
+from PIL import Image, ImageOps
 import base64
+import io
 
-app = FastAPI()
+app = Flask(__name__)
+CORS(app)  # Allow React to talk to Flask
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In prod, specify your frontend domain
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Load trained model
+model = load_model("./training/model1.h5")
 
-model_df = pd.read_csv("./public/cnn_mnist_datagen.csv") 
-@app.get("/")
-def read_root():
-    return {"message": "FastAPI is running!"}
-@app.post("/predict/")
-async def predict(data: dict):
-    image_data = data["image"]
-    header, encoded = image_data.split(",", 1)
-    decoded = base64.b64decode(encoded)
-    image = Image.open(io.BytesIO(decoded)).convert("L").resize((28, 28))
-    img_array = np.array(image).flatten() / 255.0
-    prediction = int(np.random.randint(0, 10))
+def preprocess_image(image_data_base64):
+    image_data = base64.b64decode(image_data_base64)
+    image = Image.open(io.BytesIO(image_data)).convert("L")  # Grayscale
 
-    return {"prediction": prediction}
+    image = image.resize((28, 28), Image.Resampling.LANCZOS)
+    image = ImageOps.invert(image)
+    image = ImageOps.autocontrast(image)
+
+    img_array = np.array(image).astype("float32") / 255.0
+    return img_array.reshape(1, 28, 28, 1)
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    try:
+        data = request.get_json()
+        image_base64 = data.get("image")
+
+        input_img = preprocess_image(image_base64)
+        prediction = model.predict(input_img)
+        predicted_digit = int(np.argmax(prediction))
+        confidence = float(np.max(prediction))
+
+        return jsonify({
+            "success": True,
+            "prediction": predicted_digit,
+            "confidence": confidence
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 400
+
+if __name__ == "__main__":
+    app.run(debug=True)
