@@ -1,11 +1,11 @@
 import React from 'react';
-import './App.css';
-import ModelDisplay from './ModelDisplay';
+import './pixel-style.css';
+import PixelDigitRecognizer from './PixelDigitRecognizer';
 
 function App() {
   return (
     <div className="App">
-      <ModelDisplay />
+      <PixelDigitRecognizer />
     </div>
   );
 }
