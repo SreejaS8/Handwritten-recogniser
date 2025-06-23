@@ -1,22 +1,39 @@
-Hey welcome to my hadnwritten number recogniser!!
-I made a small interactive board so we can draw a number and my model predicts it
-There's source code including the training and testing dataset ^_^
+# ✍️ Handwritten Digit Recognizer (HDR)
 
-✨ Features
+Welcome to **HDR** – a pixel-themed Handwritten Digit Recognizer powered by a trained MNIST model with **99.01% accuracy**. It’s fun, interactive, and built with love in a retro game-like interface 🎮✨.
 
-- 🖌️ Interactive canvas to draw digits
-- 🤖 Real-time digit prediction using a trained CNN
-- 🔄 FastAPI backend for model inference
-- 🌐 React.js frontend with a user-friendly interface
-- 🧪 Tested with MNIST dataset for accuracy
-have fun!!
+> "Draw a digit, hit predict, and watch some pixel magic!"
 
-It looks like this:
-![image](https://github.com/user-attachments/assets/51af773b-9a65-473a-86fd-ff0308c3a693)
+---
 
-![image](https://github.com/user-attachments/assets/62ec7fa9-c35a-46cb-bae4-d79310397d53)
+## 🚀 Tech Stack
 
-![image](https://github.com/user-attachments/assets/0554ba0a-925d-41b1-bcea-7d8a9853c85f)
+### 🔮 Frontend
+- **React** + **Vite** for lightning-fast development
+- **Custom Canvas Drawing Board** to draw digits
+- **Pixel-themed UI** using custom CSS for a game-like retro aesthetic
 
+### 🧠 Backend
+- **Flask** as the lightweight web server
+- **TensorFlow/Keras** to load and predict using a pre-trained MNIST model
+- **CORS** support for seamless API communication
 
+---
 
+## 🧪 Features
+
+- 🎨 Interactive pixel UI to draw digits
+- ✅ Real-time prediction with accuracy display
+- 🔁 Clear + Predict buttons with instant feedback
+- 🌟 XP bar and Leveling system for gamified feel
+- 🧑‍💻 Cute assistant + retro console animation
+
+---
+
+## 🛠 How to Run Locally
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/SreejaS8/Handwritten-recogniser.git
+cd Handwritten-recogniser
