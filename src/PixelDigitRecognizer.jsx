@@ -158,7 +158,7 @@ const PixelDigitRecognizer = () => {
             </div>
           )}
           <div className="drawing-area">
-            <div className="label">Draw here:</div>
+            <div className="label">Draw a number here:</div>
             <canvas
               ref={canvasRef}
               className="drawing-canvas"
