@@ -10,7 +10,7 @@ import numpy as np
 app = Flask(__name__)
 CORS(app)
 
-model = load_model("training/model1.h5")  # adjust path if needed
+model = load_model("./training/model1.h5")  # adjust path if needed
 
 def preprocess_image(image_data_base64):
     image_data = base64.b64decode(image_data_base64)
