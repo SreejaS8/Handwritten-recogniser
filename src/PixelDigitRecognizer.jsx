@@ -73,7 +73,11 @@ const PixelDigitRecognizer = () => {
     const imageBase64 = canvasRef.current.toDataURL('image/png').split(',')[1];
     try {
       // Backend Integration
-      const res = await axios.post('http://localhost:5000/predict', { image: imageBase64 });
+      const res = await fetch("../app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64Image })
+      });
       if (res.data.success) {
         setResult(res.data);
         const earnedXp = Math.floor(res.data.confidence * 10);
